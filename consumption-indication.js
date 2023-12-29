@@ -1,49 +1,64 @@
-// Parameter settings
-const shellyEnergyMeterIP = "192.168.0.28";   // IP addres of Shelly EM device
-const highLoadLimit = 3000;    // High Load Limit in W
-const mediumLoadLimit = 2500;  // Medium Load Limit in W
-const lowLoadLimit = 1000;     // Low Load Limit in W
+// CONFIGURATION ---------- start
+// IP addres of "Shelly EM" device
+const shellyEnergyMeterIP = "192.168.0.28";   
 
-const greenColor = [0, 100, 0];
-const yellowColor = [100, 100, 0];
-const redColor = [100, 0, 0];
-const blueColor = [0, 0, 100];
-const whiteColor = [100, 100, 100];
+// Settings for "mode off" - device relay is OFF
+// limits for current power consumption
+const highLoadLimit = 29;    // High power limit in W
+const mediumLoadLimit = 23;  // Medium power limit in W
+const lowLoadLimit = 16;     // Low power limit in W
 
-let energyHighLoadLimit = highLoadLimit / 60 * 15;
-let energyMediumLoadLimit = mediumLoadLimit / 60 * 15;
-let energyLowLoadLimit = lowLoadLimit / 60 * 15;
-console.log(energyLowLoadLimit, energyMediumLoadLimit, energyHighLoadLimit);
+// Settings for "mode on" - device relay is ON
+// limits for 15-minute energy consumption
+let energyHighLoadLimit = highLoadLimit / 60;
+let energyMediumLoadLimit = mediumLoadLimit / 60;
+let energyLowLoadLimit = lowLoadLimit / 60;
+// CONFIGURATION ---------- end
 
 // URL refers to Shelly EM (gen 1 device), modify accordingly 
 // if another device is used for energy meetering
 let url = "http://" + shellyEnergyMeterIP +  "/emeter/0";
+// print out to console for debugging purpose
 console.log("HTTP.GET url =", url);
 
-let energyPrevious = 0;
-let currrentPeriodeMinute = 14;
-
+// **************************************************
+//          Setting of "mode on" or "mode off" 
+//        mode depends on the state of the switch
+// **************************************************
+// Set mode at script start-up
 let switchStatus = Shelly.getComponentStatus("switch:0");
 let isSwitchStateOn = switchStatus.output;
 
-// Object for LED control - settings of color and blinking periode
-// rgb: LED color
-// brightnessLo: lo blinking LED brightness
-// brightnessHi: hi blinking  LED brightness
-// blinkingTime: blinking periode on Hi
+// Set mode during operation with addEventHandler
+Shelly.addEventHandler(function(event) {
+  if (event.info.event === "toggle") {
+    isSwitchStateOn = event.info.state;
+    console.log("Changed Switch/mode state:", isSwitchStateOn);
+    // on mode change set LED glow to white
+    ledIndicator.init([100, 100, 100], 100, 100, 0); 
+  };
+});
+
+// **************************************************
+//              Object for LED control
+// **************************************************
+// set the lighting parameters in 'init' function
+// then get LED configuration via 'setLedLo' or 'setLedHi' 
 let LED = {
-  rgb: {},
-  brightnessLo: 0,
-  brightnessHi: 0,  
-  blinkingTime: 0,
-  
+  rgb: {}, // rgb definition for LED color
+  brightnessLo: 0, // blinking - definition of brightness during LED pause 
+  brightnessHi: 0, // blinking - definition of brightness during LED pulse
+  blinkingTime: 0, // blinking - time in s for led pulse
+
+  // setting requirements for LED lighting
   init: function(rgb, brightnessLo, brightnessHi, blinkingTime) {
     this.rgb = rgb;
     this.brightnessLo = brightnessLo;
     this.brightnessHi = brightnessHi;  
-    this.blinkingTime = blinkingTime * 1000;
+    this.blinkingTime = blinkingTime * 1000; // time in sec.
   },
-  
+
+  // calculation of LED parameters for pause time
   setLedLo: function() {
     if (isSwitchStateOn === true) {
       let config = {"config": {"leds": {"colors": {"switch:0": {"on": {"rgb": this.rgb, "brightness": this.brightnessLo}}}}}};
@@ -53,6 +68,7 @@ let LED = {
     return config;
   },
 
+  // calculation of LED parameters for periode time
   setLedHi: function() {
     if (isSwitchStateOn === true) {
       let config = {"config": {"leds": {"colors": {"switch:0": {"on": {"rgb": this.rgb, "brightness": this.brightnessHi}}}}}};
@@ -61,137 +77,157 @@ let LED = {
     };
     return config;
   },  
-
 };
 
+// The timer alternately stops and starts, allowing us
+// to determine the length of the pause and the length of the pulse.
+// PAUSE is always 1 second long
 function timerLedLo() {
   Shelly.call("PLUGS_UI.SetConfig", ledIndicator.setLedLo() );
   Timer.clear(timerHandler);
   timerHandler = Timer.set(1000, false, timerLedHi);
 }
-  
+
+// PULSE - minimum 1 second + ledIndicator.blinkingTime 
+// if blinkingTime = 0 we have a blink ratio of 1s to 1s
 function timerLedHi() {
   Shelly.call("PLUGS_UI.SetConfig", ledIndicator.setLedHi() );
   Timer.clear(timerHandler);
   timerHandler = Timer.set(1000 + (ledIndicator.blinkingTime), false, timerLedLo);
 }
 
-// LED initialization, we set white colour and 100% brightness
-// LED is white until valid data is obtained from the EM
+// LED initialization
+// color is white and 100% brightness until valid data is obtained from the EM
 let ledIndicator = Object.create(LED);
-                   //rgb, brightnessLo, brightnessHi, blinkingTime
+                //rgb, brightnessLo, brightnessHi, blinkingTime
 ledIndicator.init([100, 100, 100], 100, 100, 0);
 
+// start of blinking timer
 timerHandler = Timer.set(100, false, timerLedHi);
+
+// **************************************************
+// processing mode off - device relay is OFF
+// LED indication is updated every 10 seconds with a
+// color representing the current power consumption
+// **************************************************
 
 // function reads data from the energy meter and andaccordingly 
 // signals the avaiable power via an RGB LED
 function readDataFromEMdevice(result) {
   // verify that data from EM is accepted and correct, 
-  // if not generate an error message
+  // if not generate an error message and turn LED color to white
   //console.log(result);
-  
-  
   if ((result != undefined) && (result.message === "OK")) {
     let response = JSON.parse(result.body);
     let power = response.power;
 
-	// for easier representation, we convert the power from watts to kilowatts,
-	//  intended only for display on the console
-    let kWpower = (power / 1000).toFixed(2);
-    let kWavailablePower = ((highLoadLimit - power) / 1000).toFixed(2);
-    console.log("Power consumption =", kWpower, "kW, available power =", kWavailablePower, "kW");
+	// display on the console
+    let availablePower = highLoadLimit - power;
+    console.log("Power consumption =", power, "W, available power =", availablePower, "W");
    
     // Based on the current consumption state and limits, we determine 
     // the color and flashing for the LED indication
-    // These parameters are then used in the timer (2)
+    // These parameters are then used in the blinking timer
     if (power <= lowLoadLimit) {
-      ledIndicator.init(greenColor, 100, 100, 0);
+      ledIndicator.init([0, 100, 0], 100, 100, 0);
     } else if (power <= mediumLoadLimit) {
-      ledIndicator.init(yellowColor, 100, 100, 0);
+      ledIndicator.init([100, 100, 0], 100, 100, 0);
     } else if (power <= highLoadLimit) {
-      ledIndicator.init(redColor, 100, 100, 0);
+      ledIndicator.init([100, 0, 0], 100, 100, 0);
     } else {
-      ledIndicator.init(redColor, 5, 100, 0);
+      ledIndicator.init([0, 0, 100], 5, 100, 0);
     }
     
   } else {
     console.log("Error reading data from Energy Meter with IP:", shellyEnergyMeterIP);
            // rgb, brightnessLo, brightnessHi, blinkingTime
-    ledIndicator.init(whiteColor, 100, 100, 0); // set LED glow to white
+    ledIndicator.init([100, 100, 100], 100, 100, 0); // Error set LED glow to white
   };
 };
 
-// Timer (1) - read EM data every 10 seconds
+// Timer read EM data every 10 seconds
 // and adjust the LED signalling accordingly
 Timer.set(10 * 1000, true, function() {
   if (isSwitchStateOn === false) {
-    console.log("Log from timer:",url);
     Shelly.call("HTTP.GET", {"url": url}, readDataFromEMdevice);    
   };
 });
 
+// **************************************************
+// processing mode on - device relay is ON
+// we display the energy consumption state over a
+// 15-minute period updated every full minute
+// **************************************************
+// Pay attention, the first minute is always green 
+// because that's when the energy counter resets.
 
-Shelly.addEventHandler(function(event) {
-  if (event.info.event === "toggle") {
-    isSwitchStateOn = event.info.state;
-    console.log("Switch state", isSwitchStateOn);
-    ledIndicator.init(whiteColor, 100, 100, 0); // set LED glow to white
-  };
-});
+let energyPrevious = 0; // previousby minute energy to calculate delta
+let energyDifference = 0; // last minute calculated energa
+let currrentPeriodeMinute = 0; // counter of current minutes within a 15-minute interval
+let blinkingPeriode = 0; // Length of LED blinking within a 15-minute period
 
-
+// To synchronize with real time clock, we use addStatusHandler, 
+// which updates the energy data "aenergy" every full minute. 
 Shelly.addStatusHandler(function(event) {
-  if (typeof event.delta.aenergy !== "undefined") {
-    // Read the state of the 'sys' component to obtain the current time.
-    // Use minutes to determine 15-minute periods for energy calculation.
-    let shellyStatus = Shelly.getComponentStatus("sys");
-    let minutes = shellyStatus.time.slice(3, 5);
+  if (isSwitchStateOn === true) {
+    if (typeof event.delta.aenergy !== "undefined") {
+    // ----------------------------------------------
+      // Read the state of the 'sys' component to get current time.
+      // Extract minutes for further processing.
+      let shellyStatus = Shelly.getComponentStatus("sys");
+      let minutes = shellyStatus.time.slice(3, 5);
+      
+      // Read data from Shelly EM
+      Shelly.call("HTTP.GET", {"url": url}, function(result) {
+        // verify that data from EM is accepted and correct, 
+        // if not generate an error message and turn LED to white
+        if ((result != undefined) && (result.message === "OK")) {
+          let response = JSON.parse(result.body);
+          let power = response.power;
+          let energy = response.total;
 
-    Shelly.call("HTTP.GET", {"url": url}, function(result) {
-      // verify that data from EM is accepted and correct, 
-      // if not generate an error message
-      if ((result != undefined) && (result.message === "OK")) {
-        let response = JSON.parse(result.body);
-        let power = response.power;
-        let energy = response.total;
-        
-        currrentPeriodeMinute--;
-        
-        if ((minutes % 15) === 0) {
-          console.log("------ 15 minute section");
-          energyPrevious = energy;
-          currrentPeriodeMinute = 14;
-        };
-        
-        let energyDifference = energy - energyPrevious;
-        
-        if (isSwitchStateOn === true) {
-          if (energyPrevious != 0) {
-            console.log("Current: minute", minutes, ", power", power, ", energy", energy, ", 15-min energy", energyDifference); 
-            let blinkingPeriode = 5 * currrentPeriodeMinute / 14;
-            
-            // Power W / 60 * 15 (ker je na eno uro je vrednost moči in energije enaka))
-            // energyHighLoadLimit, energyMediumLoadLimit, energyLowLoadLimit
-            
-            if (energyDifference < energyLowLoadLimit) {
-              ledIndicator.init(greenColor, 5, 100, blinkingPeriode); // set LED glow to white             
-            } else if (energyDifference < energyMediumLoadLimit) {
-              ledIndicator.init(yellowColor, 5, 100, blinkingPeriode); // set LED glow to white 
-            } else if (energyDifference < energyHighLoadLimit) {
-              ledIndicator.init(redColor, 5, 100, blinkingPeriode); // set LED glow to white 
-            } else {
-              ledIndicator.init(blueColor, 5, 100, blinkingPeriode); // set LED glow to white 
-            };
-          } else {
-            console.log("Current: minute", minutes, ", power", power, ", energy", energy);  
-            ledIndicator.init(whiteColor, 100, 100, 0); // set LED glow to white
+          currrentPeriodeMinute = minutes % 15;
+         
+          if (currrentPeriodeMinute === 0) {
+            console.log("--------- new 15 minute section ---------");
+            energyPrevious = energy;
           };
-        };
-      } else {
-        console.log("Error reading data from Energy Meter with IP:", shellyEnergyMeterIP);
-        ledIndicator.init(whiteColor, 100, 100, 0); // on error set LED glow to white        
-      };
-    });
+          
+          if (energyPrevious != 0) {
+
+            blinkingPeriode = 5 * (14 - currrentPeriodeMinute) / 14;
+            energyDifference = energy - energyPrevious;
+            
+            // calculate dynamic limits
+            let Low = energyLowLoadLimit * currrentPeriodeMinute;
+            let Mid = energyMediumLoadLimit * currrentPeriodeMinute;
+            let High = energyHighLoadLimit  * currrentPeriodeMinute;
+
+            console.log("(", currrentPeriodeMinute, ") - power:", power, ", last minutes delta energy:", energyDifference, ", extended blinking time:", blinkingPeriode);
+            console.log("... dynamic limits: Lo =", Low, ", Med =", Mid, ", Hi =", High); 
+            
+            // set LED colors
+            if (energyDifference <= Low) {
+              ledIndicator.init([0, 100, 0], 5, 100, blinkingPeriode); // set LED to green             
+            } else if (energyDifference < (Mid)) {
+              ledIndicator.init([100, 100, 0], 5, 100, blinkingPeriode); // set LED to yellow 
+            } else if (energyDifference < (High)) {
+              ledIndicator.init([100, 0, 0], 5, 100, blinkingPeriode); // set LED to red 
+            } else {
+              ledIndicator.init([0, 0, 100], 5, 100, blinkingPeriode); // set LED to blue
+            }; 
+
+          } else {
+            console.log("Waiting for the 15 minute start - current minute:", currrentPeriodeMinute);
+            ledIndicator.init([100, 100, 100], 100, 100, 0); // data not available yet, set LED to white
+          }; 
+         
+        } else {
+          console.log("Error reading data from Energy Meter with IP:", shellyEnergyMeterIP);
+          ledIndicator.init([100, 100, 100], 100, 100, 0); // Error with EM communication, set LED to white
+        };  
+      });          
+    // ----------------------------------------------  
+    };
   };
 });
