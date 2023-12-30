@@ -6,7 +6,7 @@ The electric power network has faced significant challenges in the past two deca
 
 Electricity customers are increasingly facing higher electricity prices and delivery restrictions. In the past, lower grid fees were a reward for using electricity at night. Now, rewards have been replaced by penalties if you exceed the agreed 15-minute power limit. 
 
-The solutions described here represent one possible way to address this issue. The primary objectives of the Shelly Green Grid Guardian project are focused on redistributing domestic electricity consumption to avoid unnecessary spikes in demand and reduce unnecessary energy consumption. The solution is comprised of several independent and distributed components, each contributing a small part towards achieving the ultimate goal.
+The solutions described here represent one possible way to address this issue. The primary objectives of the Shelly Green Grid Guardian project are focused on redistributing domestic electricity consumption to avoid unnecessary overloads in demand and reduce unnecessary energy consumption. The solution is comprised of several independent and distributed components, each contributing a small part towards achieving the ultimate goal.
 
 Detailed descriptions of the **Shelly Green Grid Guardian project** can be found in the following documents:
 
