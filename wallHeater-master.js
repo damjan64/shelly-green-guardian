@@ -2,16 +2,16 @@
 // IP addres of Shelly slave device
 const shellySlaveIP = "192.168.0.27";   
 // Shelly script number for switch heater ON in slave device
-const scriptNumberForON = "7";
+const scriptNumberForON = "1";
 // Shelly script number for switch heater OFF in slave device
-const scriptNumberForOFF = "8";
+const scriptNumberForOFF = "3";
 // The power at which the heater is considered to be ON
 const powerWhenHeaterON = 4;
 // The power at which the heater is considered to be OFF
 const powerWhenHeaterOFF = 0.5;
 // time (in ms) after which the heater automatically turns
 // off if we forgot to turn it off
-const autoStopHeaterTime = 20000;
+const autoStopHeaterTime = 1 * 60 * 1000;
 // CONFIGURATION ---------- end
 
 let urlForON = "http://" + shellySlaveIP + "/rpc/Script.Start?id=" + scriptNumberForON;
