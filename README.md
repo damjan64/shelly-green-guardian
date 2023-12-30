@@ -17,6 +17,6 @@ Detailed descriptions of the **Shelly Green Grid Guardian project** can be found
 
 and all the necessary source code files are included.
 
-During the development of an application, it is necessary to frequently simulate the variable power of network. Here is a description of the testing tool that I personally use: 
+During the development of an application, it is necessary to frequently simulate the variable power of network. Here is a description of my testing tool: 
 * [load simulator for Shelly EM](load-simulator.md)
 
