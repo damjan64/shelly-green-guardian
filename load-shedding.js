@@ -1,5 +1,9 @@
+// ============================================================
+//                       Load Shedding
+// ============================================================
+
 // CONFIGURATION ---------- start
-const shellyEnergyMeterIP = "192.168.0.28";   // IP addres of Shelly EM device
+const shellyEnergyMeterIP = "192.168.0.28";   // IP addres of Shelly EM device - use a fixed IP !!!
 const loadSheddingPower = 30; // power from the grid at which a Load Shedding is required
 const switchBackPower = 10; // power from the grid at which device is switched on again
 const minPowerToEnableLoadShedding = 3; // load power that determines the on state
@@ -13,10 +17,10 @@ let eventHandlerPtr = 0; // state pointer inside addEventHandler function
 let timerHandle = null;  // timer handler
 let previousEnergy = 0;  // previous state of the EM for calculating the minute consumption
 
-
-// ============================================================
+// ------------------------------------------------------------
 // The function determines whether the load should be switched
 // ON or OFF, based on the last minute's consumption.
+// retrieved from the Shelly EM
 function loadSheddingManagement() {
   Shelly.call("HTTP.GET", {"url": url}, function(result) {
     if ((result != undefined) && (result.message === "OK")) {
@@ -27,12 +31,13 @@ function loadSheddingManagement() {
       if (previousEnergy === 0) {
         previousEnergy = totalEnergy;        
       };
-
       // calculate the previous minute's consumption
       let deltaEnergy = totalEnergy - previousEnergy;
       previousEnergy = totalEnergy;
-      deltaEnergy = deltaEnergy * 60;  // convert to hourly for easier monitoring
-      console.log("Load Shedding - delta Energy:", deltaEnergy);
+
+      // convert to hourly to get kWh for monitoring (numericaly in 1 h kWh = kW)
+      deltaEnergy = deltaEnergy * 60;
+      console.log("Load Shedding - delta Energy:", deltaEnergy, "W");
 
       // consumption too high disconnects the load
       if (deltaEnergy >= loadSheddingPower) {
@@ -52,14 +57,16 @@ function loadSheddingManagement() {
   });   
 };
 
-
-// ============================================================
+// ------------------------------------------------------------
 // addEventHandler function is used to detect 
 // change in load status
 Shelly.addEventHandler(function(respond) {
   startStopLoadShedding()
 });
 
+// ------------------------------------------------------------
+// monitors whether the connected load is actively consuming power or in a standby state
+// If load  is on activate timer to for periodically invoking the loadSheddingManagement function
 function startStopLoadShedding() {
   // in principle we can get the data from addEventHandler, but in this case we get
   // output and power at the same time, which makes the implementation a bit easier
@@ -91,6 +98,8 @@ function startStopLoadShedding() {
   };    
 };
 
+// ------------------------------------------------------------
+// Initialisation at start-up
 // addEventHandler sometimes fails to detect the current state at function 
 // start up - added just in case to work right from the start, 
 // and not after the first event heppens

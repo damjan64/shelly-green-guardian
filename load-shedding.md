@@ -1,10 +1,8 @@
-# Temporary Powering Down of Loads to Prevent Spikes
+# Temporary Powering Down of Loads to Prevent Overload
 
 The goal is to avoid overloading the electrical power supply. Load shedding is a process where specific devices are disconnected during an overload until the overall network load decreases and there is enough capacity to reconnect them back again.
 
 To achieve this, it is recommended to use electric devices that can tolerate occasional shutdowns without negative consequences. Examples include water heaters and electric heaters. On the other hand, devices that could cause inconvenience, like electric ovens, cooktops, and appliances with built-in sequential controllers (e.g., washing machines and dishwashers), are less suitable for this purpose.
-
-The algorithm calculation is based on the energy consumption of the previous minute.
 
 ## Configuration
 
@@ -16,6 +14,10 @@ Configuration design is based on following Shelly devices:
 | ![Shelly Plus 1PM](img/Shelly_Plus_1PM.jpg)|**Shelly Plus 1PM** or a similar device with a built-in smart relay and power metering. This device it is used for Load Shedding. We connect to it a device that shall be switched off in case of network overload. There's nothing to stop us using more devices with different settings to be more flexible.|
 
 ##	Description
+
+The Shelly Plus 1PM, utilizing the **addEventHandler**, monitors whether the connected load is actively consuming power or in a standby state. If the power consumption exceeds the **minPowerToEnableLoadShedding** limit, the load is recognized as active, necessitating Load Shedding control. Otherwise, the algorithm transitions to a standby state. This functionality is embedded within the **startStopLoadShedding** function. By isolating the **startStopLoadShedding** function from the **addEventHandler**, it can be initialized during the script's startup. Importantly, this allows initialization even when a triggering condition for **addEventHandler** is not present at the script's start.
+
+When the Load Shedding algorithm is active, a timer is activated within the **startStopLoadShedding** function, periodically invoking the **loadSheddingManagement** function. The **loadSheddingManagement** function first retrieves data from the Shelly EM and then, based on the past energy consumption and the limits **loadSheddingPower** and **switchBackPower**, decides whether to trigger load shedding or not. Monitoring energy consumption is more suitable than monitoring power because the grid often experiences short-term spikes that do not significantly impact overall consumption. This way, the algorithm is less jittery.
 
 **Shelly EM** is Gen 1 device so no software is foreseen in this device. Nevertheless, you can retrieve real-time power consumption and energy usage data from this device. When installing the Shelly EM device, it is important to set a fixed IP address. This ensures that other devices can always locate it and access its data when needed.
 
@@ -44,3 +46,7 @@ My settings example is as follows:
 >**Warning**
 >
 >Be cautious to prevent "pumping"; the difference between the variables loadSheddingPower and switchBackPower should be greater than the power rating of the device being switched off. Otherwise, upon reconnecting the device, it may once again result in an overload, necessitating the need to turn it off again ... and so on.
+>
+>It's important to be aware that conflicts may occur between the user and the algorithm. For instance, the algorithm may switch off a device, and if the user manually switches it back on, the algorithm might turn it off again. If your wish is to keep a device turned on, regardless of network overloading, you must deactivate the algorithm's operation.
+>
+>Take into account that Shelly updates the energy value every minute; if faster responsiveness is needed, instantaneous power is available. However, without additional averaging, the algorithm will be very jittery.
